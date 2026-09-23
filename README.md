@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DonateHub
 
-## Getting Started
+SaaS webhook donasi multi-user untuk game Roblox. Satu tempat menerima donasi
+dari Saweria, BagiBagi, dan sumber lain — lalu disajikan ke Roblox lewat 1 link
+feed per user. Dibangun untuk menggantikan Google Spreadsheet yang terbukti tidak
+cocok (tanpa query, tanpa lock, poll selamanya, rapuh operasional).
 
-First, run the development server:
+## Cara kerja
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+Saweria / BagiBagi / dll
+  → POST https://<domain>/api/in/<inboundToken>   (1 URL per sumber per user)
+  → tersimpan (claimed=false)
+Roblox poll tiap ±15 detik:
+  → GET /api/roblox/feed?token=<userToken>&unclaimed=1
+  → proses (save+notif+VFX) → GET ...&claimRow=<id>   (atomik, anti ganda)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Fitur
+- Multi-user (login Google / Discord via Auth.js), tiap user punya endpoint
+  webhook sendiri per provider + 1 link feed Roblox (bisa regenerate).
+- Dashboard: daftar donasi realtime + filter, statistik (total/hari ini/jumlah),
+  top donatur, CRUD endpoint + tombol copy URL.
+- Klaim atomik (`UPDATE ... WHERE claimed=false`) — aman multi-server Roblox.
+- Dedup DB-level per endpoint+externalId. Tanpa billing, gratis semua.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Mulai (lokal)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env   # isi DATABASE_URL + AUTH_* (lihat bawah)
+pnpm install
+pnpm exec drizzle-kit migrate
+pnpm dev               # http://localhost:3000
+```
 
-## Learn More
+Env wajib: `DATABASE_URL` (PostgreSQL — Neon/Supabase/Railway),
+`AUTH_SECRET` (`npx auth secret`), `AUTH_GOOGLE_ID/SECRET`,
+`AUTH_DISCORD_ID/SECRET`, `NEXT_PUBLIC_APP_URL`.
 
-To learn more about Next.js, take a look at the following resources:
+## Sambungkan Roblox (SaweriaMain)
+1. Daftar → dashboard → Endpoints → buat endpoint `saweria` → copy webhook URL →
+   pasang di dashboard Saweria (ganti URL Apps Script lama).
+2. Copy link feed (`/api/roblox/feed?token=...`) → `SaweriaConfig.WEBHOOK_URL`.
+   Query `unclaimed`/`claimRow`/`unclaimRow` sudah ditangani loop yang ada —
+   tidak perlu ubah parser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Struktur
+`app/(auth, dashboard, api)` · `lib/db` (Drizzle schema) · `lib/providers`
+(adapter per sumber) · `lib/auth.ts` · `drizzle/` (migrasi). Detail rencana
+dan status: [PLAN.md](./PLAN.md).
